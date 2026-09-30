@@ -1,5 +1,6 @@
-import {mkdir, readFile, writeFile} from "node:fs/promises";
+import { mkdir, readFile, writeFile, link, unlink } from "node:fs/promises";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 
 export type LocalReport = {
   id: string;
@@ -10,22 +11,33 @@ export type LocalReport = {
   status: "pending";
 };
 
-const reportsPath = path.join(process.cwd(), "data", "reports.json");
-
-async function readReports(): Promise<LocalReport[]> {
-  try {
-    const contents = await readFile(reportsPath, "utf8");
-    const parsed: unknown = JSON.parse(contents);
-    return Array.isArray(parsed) ? parsed as LocalReport[] : [];
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw error;
-  }
-}
-
 export async function saveReport(report: LocalReport): Promise<void> {
-  const reports = await readReports();
-  if (reports.some((item) => item.id === report.id)) return;
-  await mkdir(path.dirname(reportsPath), {recursive: true});
-  await writeFile(reportsPath, JSON.stringify([...reports, report], null, 2) + "\n", "utf8");
+  // Um ID imutável por arquivo: solicitações simultâneas nunca sobrescrevem umas às outras.
+  const directory = path.join(process.cwd(), "data", "reports");
+  await mkdir(directory, { recursive: true });
+  // Preserva a idempotência para registros criados por versões anteriores.
+  try {
+    const legacy: LocalReport[] = JSON.parse(
+      await readFile(path.join(process.cwd(), "data", "reports.json"), "utf8"),
+    );
+    if (legacy.some((item) => item.id === report.id)) return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  const temporary = path.join(directory, `.${randomUUID()}.tmp`);
+  try {
+    await writeFile(temporary, JSON.stringify(report) + "\n", {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+    try {
+      // Publica apenas o arquivo completo
+      await link(temporary, path.join(directory, `${report.id}.json`));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+  } finally {
+    await unlink(temporary).catch(() => {});
+  }
 }
