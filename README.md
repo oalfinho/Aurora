@@ -13,7 +13,7 @@ Aplicação local com mapa interativo, pesquisa de percepção e assistente guia
 
 ## Relatos
 
-O chatbot é um fluxo de escolhas, sem LLM e sem texto livre. POST /api/relatos valida os campos e grava localmente em data/reports.json com status pending. UUID garante idempotência. O servidor não armazena IP, nome, contato, coordenadas individuais ou cookies de identificação no registro.
+O chatbot é um fluxo de escolhas, sem LLM e sem texto livre. POST /api/relatos valida os campos e grava localmente em data/reports/<UUID>.json com status pending. UUID garante idempotência. Cada envio é publicado atomicamente em um arquivo separado para evitar perda em gravações simultâneas; o arquivo legado data/reports.json continua sendo consultado para deduplicação. O servidor não armazena IP, nome, contato, coordenadas individuais ou cookies de identificação no registro.
 
 Não há moderação operacional nem publicação comunitária neste MVP. Os relatos ficam pendentes para revisão local.
 
@@ -41,3 +41,16 @@ Esta versão é local e não depende de serviços externos de hospedagem, banco 
 - Política de tiles: https://operations.osmfoundation.org/policies/tiles/
 - Canais de apoio: https://www.gov.br/mulheres/pt-br/ligue180
 - Leaflet embutido no projeto.
+
+## Mapa, mobile e assistente
+
+- Zoom limitado entre 11 e 16, com navegação restrita ao limite municipal e uma margem de 12%. O botão de centralizar retorna ao centro urbano.
+- Interface responsiva: no celular, o chat começa fechado e pode ser aberto pelo botão fixo “Registrar relato”. Quando aberto, aparece antes do mapa. O mapa se ajusta automaticamente a mudanças de tamanho.
+- Categorias de relato têm cor, ícone e mensagem próprios. Os filtros históricos também atualizam cores de áreas e legenda; os dados continuam agregados.
+- Quatro etapas: situação, região, período e revisão. É possível voltar, corrigir e recomeçar; o envio exige consentimento e mês válido. Falhas e timeout preservam as escolhas e permitem repetir o envio com o mesmo protocolo.
+- O assistente é guiado por escolhas, sem LLM ou texto livre. Não publica relatos automaticamente nem atende emergências.
+- A persistência exige servidor Node com disco gravável e persistente. Hospedagens com disco efêmero ou várias instâncias precisam de banco compartilhado antes de uso real.
+
+Para testar no celular na mesma rede: `npm run dev -- --hostname 0.0.0.0` e abra `http://IP-DO-COMPUTADOR:3000`. Alertas por geolocalização exigem HTTPS fora de localhost.
+
+Validação da API: execute `npm run build` e depois `node scripts/test-reports.mjs`. O teste inicia um servidor local e remove apenas os relatos de teste que ele próprio criou.
