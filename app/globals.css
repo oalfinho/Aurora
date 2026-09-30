@@ -1423,7 +1423,7 @@ main {
     transition: none !important;
   }
 }
-/* Readable controls and essential content at all viewport sizes. */
+/* Ajustes de tamanho de fonte para diferentes elementos */
 .bubble,
 .dialog-body,
 .page-heading p {
@@ -1536,5 +1536,159 @@ nav button,
   }
   .brand {
     font-size: 22px;
+  }
+}
+
+/* Adicionei estilos para o chat-card */
+.chat-card {
+  scroll-margin-top: 16px;
+  border-top: 4px solid var(--report-color);
+}
+.chat-card .bot-avatar,
+.chat-card .chat-progress {
+  background: var(--report-soft);
+  color: var(--report-color);
+}
+.chat-card .bubble:not(.user-bubble) {
+  background: var(--report-soft);
+}
+.chat-card .primary,
+.chat-card .user-bubble {
+  background: var(--report-color);
+}
+.chat-progress {
+  padding: 10px 16px;
+  font-size: 12px;
+}
+.chat-progress strong {
+  display: block;
+  margin-top: 3px;
+}
+.category-message {
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+.choices button {
+  min-height: 44px;
+  gap: 9px;
+}
+.choices button span {
+  flex: 1;
+}
+.choices button svg {
+  flex-shrink: 0;
+}
+.chat-content {
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+.chat-header,
+.chat-footer,
+.chat-privacy,
+.chat-progress {
+  flex-shrink: 0;
+}
+.chat-footer button,
+.chat-header .icon-button {
+  min-height: 44px;
+}
+.chat-header .icon-button {
+  min-width: 44px;
+}
+.mobile-report {
+  display: none;
+}
+@media (min-width: 701px) and (max-width: 1050px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .chat-card {
+    height: 680px;
+  }
+}
+@media (max-width: 700px) {
+  .app-shell main {
+    min-width: 0;
+    padding-bottom: 90px;
+  }
+  .rail {
+    flex-wrap: wrap;
+  }
+  .rail nav button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .workspace .chat-card {
+    order: -1;
+    height: min(780px, 88dvh);
+    min-height: 420px;
+  }
+  .workspace {
+    margin-inline: 12px;
+  }
+  .map-toolbar {
+    gap: 4px;
+  }
+  .layer-pills {
+    flex: 1;
+    min-width: 0;
+  }
+  .layer-pills button {
+    flex: 1;
+    padding: 8px 4px;
+    font-size: 12px;
+    min-height: 44px;
+  }
+  .map-wrap {
+    height: min(520px, 65dvh);
+    min-height: 340px;
+  }
+  .map-detail {
+    max-width: calc(100% - 32px);
+    max-height: calc(100% - 125px);
+    overflow-y: auto;
+  }
+  .area-list-heading {
+    flex-wrap: wrap;
+  }
+  .area-list-heading .search-box {
+    width: 100%;
+  }
+  .search-box input,
+  .month-label input,
+  .chat-select .picker {
+    font-size: 16px;
+    min-height: 44px;
+  }
+  .chat-content {
+    padding: 16px;
+  }
+  .chat-privacy {
+    flex-wrap: wrap;
+    text-align: center;
+  }
+  .chat-footer {
+    padding: 6px 12px;
+    gap: 4px 12px;
+  }
+  .mobile-report {
+    display: flex;
+    position: fixed;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    white-space: nowrap;
+    min-height: 48px;
+    box-shadow: 0 6px 24px #30263840;
+  }
+  .alert-toast {
+    bottom: calc(84px + env(safe-area-inset-bottom));
+    z-index: 1100;
+  }
+  .leaflet-touch .leaflet-bar a {
+    width: 44px;
+    height: 44px;
+    line-height: 44px;
   }
 }
