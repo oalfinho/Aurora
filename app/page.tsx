@@ -1,5 +1,11 @@
 "use client";
-import { useState, useEffect, useRef, useMemo } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  type CSSProperties,
+} from "react";
 import {
   MapPin,
   ShieldCheck,
@@ -16,7 +22,6 @@ import {
   Heart,
   LockKeyhole,
   ChevronRight,
-  Sparkles,
   Phone,
   Map as MapIcon,
   BarChart3,
@@ -39,6 +44,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import data from "@/data/aurora.json";
 import { regions, categories, periods } from "@/lib/report-options";
+import { reportTheme, historyColors } from "@/lib/report-theme";
 type Layer = "history" | "survey" | "community";
 function Picker({
   value,
@@ -73,7 +79,6 @@ const labels: Record<string, string> = {
   te: "Tentativa de feminicídio",
 };
 
-// Troque para 'square' se quiser voltar aos quadrados.
 const MAP_HISTORY_SHAPE: "circle" | "square" = "circle";
 export default function Aurora() {
   const [layer, setLayer] = useState<Layer>("history"),
@@ -102,6 +107,21 @@ export default function Aurora() {
     location = useRef<any>(null),
     chatBottom = useRef<HTMLDivElement>(null),
     reportId = useRef("");
+  const sending = useRef(false);
+  const chatCard = useRef<HTMLElement>(null);
+  const theme = reportTheme(answers[0]);
+  const ThemeIcon = theme.icon;
+  const mapColor = layer === "survey" ? "#9270bb" : historyColors[category];
+  const validMonth =
+    /^\d{4}-(0[1-9]|1[0-2])$/.test(month) &&
+    month >= "2000-01" &&
+    month <= new Date().toISOString().slice(0, 7);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      if (window.matchMedia("(max-width: 700px)").matches) setChat(false);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
   const cells = useMemo(
     () =>
       data.cells.filter((c) => category === "all" || (c as any)[category] >= 5),
@@ -127,6 +147,10 @@ export default function Aurora() {
       map.current = L.map(mapEl.current, {
         zoomControl: false,
         scrollWheelZoom: true,
+        minZoom: 11,
+        maxZoom: 16,
+        maxBounds: L.geoJSON(data.boundary).getBounds().pad(0.12),
+        maxBoundsViscosity: 1,
       }).setView([-22.406, -47.565], 13);
       L.control.zoom({ position: "bottomright" }).addTo(map.current);
       const tiles = L.tileLayer(
@@ -190,7 +214,7 @@ export default function Aurora() {
             ? p.total
             : p[category]
           : p.count;
-      const color = layer === "survey" ? "#9270bb" : "#bd5964";
+      const color = layer === "survey" ? "#9270bb" : historyColors[category];
       const shape =
         layer === "history"
           ? MAP_HISTORY_SHAPE === "circle"
@@ -227,8 +251,11 @@ export default function Aurora() {
     });
   }, [ready, layer, category]);
   useEffect(() => {
-    setTimeout(() => map.current?.invalidateSize(), 250);
-  }, [chat, view]);
+    if (!mapEl.current || !ready) return;
+    const observer = new ResizeObserver(() => map.current?.invalidateSize());
+    observer.observe(mapEl.current);
+    return () => observer.disconnect();
+  }, [chat, view, ready]);
   useEffect(() => {
     if (step > 0)
       chatBottom.current?.scrollIntoView({
@@ -274,13 +301,10 @@ export default function Aurora() {
   function openChat() {
     setChat(true);
     setView("map");
-    setTimeout(
-      () =>
-        document
-          .querySelector(".chat-card")
-          ?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
-      200,
-    );
+    setTimeout(() => {
+      chatCard.current?.focus({ preventScroll: true });
+      chatCard.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 200);
   }
   function focus(p: any) {
     setSelected(p);
@@ -346,6 +370,8 @@ export default function Aurora() {
     );
   }
   function reset() {
+    if (sending.current) return;
+    setMonth(new Date().toISOString().slice(0, 7));
     setStep(0);
     setAnswers([]);
     setChoice("");
@@ -359,13 +385,35 @@ export default function Aurora() {
     setStep((s) => s + 1);
     setChoice("");
   }
+  function back() {
+    if (sending.current || sent || step === 0) return;
+    setAnswers((a) => a.slice(0, -1));
+    setStep((s) => s - 1);
+    setChoice("");
+    setConsent(false);
+    setError("");
+    reportId.current = "";
+  }
   async function send() {
+    if (sending.current || !consent || !validMonth || answers.length !== 3)
+      return;
+    sending.current = true;
     setSaving(true);
     setError("");
-    if (!reportId.current) reportId.current = crypto.randomUUID();
     try {
+      if (!reportId.current) {
+        // getRandomValues também é suportado em navegadores antigos, mas não no Node.js. Por isso, usamos a API de crypto do navegador.
+        const bytes = crypto.getRandomValues(new Uint8Array(16));
+        bytes[6] = (bytes[6] & 15) | 64;
+        bytes[8] = (bytes[8] & 63) | 128;
+        const hex = Array.from(bytes, (b) =>
+          b.toString(16).padStart(2, "0"),
+        ).join("");
+        reportId.current = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+      }
       const r = await fetch("/api/relatos", {
         method: "POST",
+        signal: AbortSignal.timeout(15000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: reportId.current,
@@ -377,11 +425,17 @@ export default function Aurora() {
         }),
       });
       const j: any = await r.json();
-      if (!r.ok) throw new Error(j.error);
+      if (!r.ok)
+        throw new Error(j.error || "Não foi possível enviar. Tente novamente.");
       setSent(j.id);
     } catch (e: any) {
-      setError(e.message || "Não foi possível enviar. Tente novamente.");
+      setError(
+        e.name === "TimeoutError"
+          ? "O envio demorou demais. Tente novamente; suas escolhas foram mantidas."
+          : e.message || "Não foi possível enviar. Tente novamente.",
+      );
     } finally {
+      sending.current = false;
       setSaving(false);
     }
   }
@@ -650,13 +704,20 @@ export default function Aurora() {
                     <span
                       className="legend-dot"
                       style={{
-                        background: layer === "survey" ? "#9270bb" : "#bd5964",
+                        background: mapColor,
                       }}
                     />
                     {layer === "survey"
                       ? "Menções de insegurança"
-                      : "Concentração de registros"}
-                    <span className="legend-scale" />{" "}
+                      : category === "all"
+                        ? "Concentração de registros"
+                        : labels[category]}
+                    <span
+                      className="legend-scale"
+                      style={{
+                        background: `linear-gradient(90deg, #ffffff, ${mapColor})`,
+                      }}
+                    />{" "}
                     <small>menor → maior</small>
                   </div>
                 </div>
@@ -720,10 +781,21 @@ export default function Aurora() {
                 </div>
               </section>
               {chat && (
-                <aside className="chat-card">
+                <aside
+                  ref={chatCard}
+                  tabIndex={-1}
+                  aria-label="Assistente de relato"
+                  className="chat-card"
+                  style={
+                    {
+                      "--report-color": theme.color,
+                      "--report-soft": theme.soft,
+                    } as CSSProperties
+                  }
+                >
                   <div className="chat-header">
                     <div className="bot-avatar">
-                      <Sparkles size={22} />
+                      <ThemeIcon size={22} />
                     </div>
                     <div>
                       <h2>Converse com a Aurora</h2>
@@ -741,7 +813,13 @@ export default function Aurora() {
                     <LockKeyhole size={14} />
                     Sem nome, telefone ou endereço exato
                   </div>
-                  <div className="chat-content">
+                  <div className="chat-progress" role="status">
+                    {sent
+                      ? "Relato enviado"
+                      : `Etapa ${step + 1} de 4 · ${["Situação", "Região", "Período", "Revisão"][step]}`}
+                    {answers[0] && <strong>{answers[0]}</strong>}
+                  </div>
+                  <div className="chat-content" aria-busy={saving}>
                     <div className="chat-day">ESTE É UM ESPAÇO DE ESCUTA</div>
                     <div className="bubble">
                       Oi, estou aqui para te ajudar a registrar uma situação em
@@ -757,12 +835,26 @@ export default function Aurora() {
                           Vamos começar pelo tipo de situação?
                         </div>
                         <div className="choices">
-                          {categories.map((c) => (
-                            <button key={c} onClick={() => next(c)}>
-                              {c}
-                              <ChevronRight size={14} />
-                            </button>
-                          ))}
+                          {categories.map((c) => {
+                            const option = reportTheme(c);
+                            const Icon = option.icon;
+                            return (
+                              <button
+                                key={c}
+                                onClick={() => next(c)}
+                                style={{
+                                  borderLeft: `4px solid ${option.color}`,
+                                }}
+                              >
+                                <Icon
+                                  size={18}
+                                  style={{ color: option.color }}
+                                />
+                                <span>{c}</span>
+                                <ChevronRight size={14} />
+                              </button>
+                            );
+                          })}
                         </div>
                       </>
                     )}
@@ -771,6 +863,7 @@ export default function Aurora() {
                         <div className="bubble user-bubble">{a}</div>
                         {i === 0 && step === 1 && (
                           <div className="bubble">
+                            <p className="category-message">{theme.message}</p>
                             Em qual região aconteceu? Escolha só o bairro ou uma
                             região ampla.
                           </div>
@@ -820,7 +913,13 @@ export default function Aurora() {
                             min="2000-01"
                             max={new Date().toISOString().slice(0, 7)}
                             value={month}
-                            onChange={(e) => setMonth(e.target.value)}
+                            onChange={(e) => {
+                              setMonth(e.target.value);
+                              setConsent(false);
+                              reportId.current = "";
+                            }}
+                            disabled={saving}
+                            aria-invalid={!validMonth}
                           />
                         </label>
                         <div className="review">
@@ -838,6 +937,7 @@ export default function Aurora() {
                           <Switch
                             id="consent"
                             checked={consent}
+                            disabled={saving}
                             onCheckedChange={setConsent}
                           />
                           <label htmlFor="consent">
@@ -846,7 +946,7 @@ export default function Aurora() {
                         </div>
                         <button
                           className="primary full"
-                          disabled={!consent || !month || saving}
+                          disabled={!consent || !validMonth || saving}
                           onClick={send}
                         >
                           {saving ? "Enviando…" : "Enviar relato"}
@@ -855,7 +955,7 @@ export default function Aurora() {
                       </>
                     )}
                     {sent && (
-                      <div className="success">
+                      <div className="success" role="status">
                         <Check size={24} />
                         <h3>Relato recebido.</h3>
                         <p>
@@ -873,7 +973,12 @@ export default function Aurora() {
                     <div ref={chatBottom} />
                   </div>
                   <div className="chat-footer">
-                    <button onClick={reset}>
+                    {step > 0 && !sent && (
+                      <button disabled={saving} onClick={back}>
+                        Voltar
+                      </button>
+                    )}
+                    <button disabled={saving} onClick={reset}>
                       <RotateCcw size={14} />
                       Recomeçar
                     </button>
@@ -992,6 +1097,11 @@ export default function Aurora() {
           </button>
         </footer>
       </main>
+      {!chat && view === "map" && (
+        <button className="mobile-report primary" onClick={openChat}>
+          <MessageCircle size={20} /> Registrar relato
+        </button>
+      )}
       <Dialog open={!!modal} onOpenChange={(o) => !o && setModal("")}>
         <DialogContent className="aurora-dialog">
           <DialogHeader>
